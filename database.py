@@ -33,7 +33,7 @@ async def get_db():
     Yields:
         aiosqlite.Connection: The database connection object.
     """
-    async with aiosqlite(DATABASE_URL) as db:
+    async with aiosqlite.connect(DATABASE_URL) as db:
         yield db
 
 
