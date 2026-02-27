@@ -1,7 +1,7 @@
 from fastapi import FastAPI,HTTPException,Depends
-import aiosqlite
-from database import init_db, get_db, DATABASE_URL, logger
-from models import  User_create
+from sqlalchemy.ext.asyncio import AsyncSession
+from database import init_db, get_db, logger
+from schemas import UserCreate, UserUpdate
 from crud import add_user,get_all_users,delete_user,update_user
 from contextlib import asynccontextmanager
 
@@ -19,9 +19,8 @@ async def lifespan(app:FastAPI):
     Args:
         app (FastAPI): The FastAPI application instance.
     """
-    async with aiosqlite.connect(DATABASE_URL) as db:
-        await init_db(db)
-        logger.info("Database initialized")
+    await init_db()
+    logger.info("Database initialized")
     yield
     logger.info("Server shutting down")
 
@@ -48,14 +47,14 @@ async def hello():
 
 
 @app.get("/users/get_users")
-async def get_users(db: aiosqlite.Connection = Depends(get_db)):
+async def get_users(db: AsyncSession= Depends(get_db)):
     """
     Retrieve all users from the database.
 
     This endpoint depends on the 'get_db' dependency to provide a database connection.
 
     Args:
-        db (aiosqlite.Connection): Database connection provided by the dependency.
+        db (AsyncSession): Database connection provided by the dependency.
     
     Returns:
         list: A list of users retrieved from the database.
@@ -63,8 +62,8 @@ async def get_users(db: aiosqlite.Connection = Depends(get_db)):
     return  await get_all_users(db)
 
 
-@app.post("/users/creat_user")
-async def creat_user(user:User_create, db: aiosqlite.Connection = Depends(get_db)):
+@app.post("/users/create_user")
+async def create_user(user:UserCreate, db: AsyncSession = Depends(get_db)):
     """
     Create a new user.
 
@@ -73,8 +72,8 @@ async def creat_user(user:User_create, db: aiosqlite.Connection = Depends(get_db
     it raises an HTTP 400 error.
 
     Args:
-        user (User_create): The user data to create, validated by Pydantic.
-        db (aiosqlite.Connection): Database connection provided by the dependency.
+        user (UserCreate): The user data to create, validated by Pydantic.
+        db (AsyncSession): Database connection provided by the dependency.
     
     Raises:
         HTTPException: 400 error if a user with the provided email already exists.
@@ -82,13 +81,13 @@ async def creat_user(user:User_create, db: aiosqlite.Connection = Depends(get_db
     Returns:
         dict: A success message and the ID of the created user.
     """
-    user_id = await add_user(user.name,user.age,user.email,db)
+    user_id = await add_user(db,user.name,user.age,user.email)
     if user_id is None:
         raise HTTPException(status_code=400,detail="User with this email already exists")
     return {"message": "User created successfully", "user_id": user_id}
 
 @app.delete("/users/delete_user/{user_id}")
-async def user_delete(user_id:int, db: aiosqlite.Connection = Depends(get_db)):
+async def user_delete(user_id:int, db: AsyncSession = Depends(get_db)):
     """
     Delete a user by their ID.
 
@@ -97,15 +96,15 @@ async def user_delete(user_id:int, db: aiosqlite.Connection = Depends(get_db)):
 
     Args:
         user_id (int): The ID of the user to delete.
-        db (aiosqlite.Connection): Database connection provided by the dependency.
+        db (AsyncSession): Database connection provided by the dependency.
     
     Returns:
         bool: True if the user was deleted, False otherwise.
     """
-    return  await delete_user(user_id,db)
+    return  await delete_user(db,user_id)
 
-@app.put("/users/user_update/{user_id}")
-async def user_update(user_id:int, new_name:str = None,new_age:int = None,new_email:str= None,db:aiosqlite.Connection = Depends(get_db)):
+@app.patch("/users/user_update/{user_id}")
+async def user_update(user_id:int,user_data:UserUpdate,db:AsyncSession= Depends(get_db) ):
     """
     Update specific fields of a user.
 
@@ -117,9 +116,14 @@ async def user_update(user_id:int, new_name:str = None,new_age:int = None,new_em
         new_name (str, optional): The new name for the user. Defaults to None.
         new_age (int, optional): The new age for the user. Defaults to None.
         new_email (str, optional): The new email for the user. Defaults to None.
-        db (aiosqlite.Connection): Database connection provided by the dependency.
+        db (AsyncSession): Database connection provided by the dependency.
     
     Returns:
-        bool: True if the user was updated, False if no fields were provided for update.
+        dict: True if the user was updated, False if no fields were provided for update.
     """
-    return  await update_user(user_id,db, new_name,new_age,new_email)
+    update_dict = user_data.model_dump(exclude_unset=True)
+    success = await update_user(db, user_id, **update_dict)
+    if not success:
+        raise HTTPException(status_code = 404, detail="User not found or no data provided")
+    return {"message": "User updated successfully"}
+    

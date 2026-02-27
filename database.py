@@ -1,5 +1,8 @@
-import aiosqlite
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker,AsyncSession
+from sqlalchemy.orm import DeclarativeBase,Mapped, mapped_column
+from config import settings
 import logging
+import os
 
 
 
@@ -10,43 +13,29 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "todo_app.db"
 
-CREATE_TABLE_USERS = """
-CREATE TABLE IF NOT  EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,
-    age INTEGER NOT NULL CHECK(age >= 1 AND age < 150),
-    email TEXT NOT NULL UNIQUE
-);
-"""
+
+class Base(DeclarativeBase):
+    pass
+
+
+
+engine = create_async_engine(settings.database_url, echo = True)
+async_session =  async_sessionmaker(engine, expire_on_commit= False, class_ = AsyncSession)
 
 async def get_db():
-    """
-    Generator function that yields a database connection.
+   async with async_session() as session:
+        try:
+            yield session
+            
+        except Exception:
+            await session.rollback()
+            raise 
+        finally:
+            await session.close()
 
-    This function is designed to be used as a FastAPI dependency with "Depends".
-    It opens an asynchronous connection to the database  specified by DATABASE_URL
-    using aiosqlite, yieleds the connection object, and then automatically closes
-    the connection  after the caller finishes using it (due to 'async with').
+async def init_db( ):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
-    Yields:
-        aiosqlite.Connection: The database connection object.
-    """
-    async with aiosqlite.connect(DATABASE_URL) as db:
-        yield db
-
-
-async def init_db(db: aiosqlite.Connection):
-    """
-    Initializes the database by creating the 'users' table if it doesn't exist.
-
-    This function executes the CREATE_TABLE_USERS SQL script on the provided
-    database connection.
-
-    Args:
-        db (aiosqlite.Connection): The database connection object.
-    """   
-    await db.execute(CREATE_TABLE_USERS)
-    await db.commit()
-    logger.info("Database initialized")
+    logger.info("Database initialized with SQLAlchemy")

@@ -1,24 +1,25 @@
 # FastAPI CRUD API
 
-This is a simple CRUD API built with [FastAPI](https://fastapi.tiangolo.com/) and [aiosqlite](https://pypi.org/project/aiosqlite/).
+This is a simple CRUD API built with [FastAPI](https://fastapi.tiangolo.com/), [SQLAlchemy 2.0](https://www.sqlalchemy.org/), and [PostgreSQL](https://www.postgresql.org/).
 
 ## Features
 
 - Create, Read, Update, Delete (CRUD) operations for users.
-- Async database operations using `aiosqlite`.
+- Asynchronous database operations using SQLAlchemy 2.0 with PostgreSQL.
 - Input validation using [Pydantic](https://docs.pydantic.dev/).
-- Structured project layout (`database.py`, `crud.py`, `models.py`, `main.py`).
+- Structured project layout (`database.py`, `models.py`, `schemas.py`, `crud.py`, `main.py`).
 - Comprehensive documentation using docstrings.
 - Asynchronous tests using `pytest-asyncio`.
 
 ## Technologies Used
 
-- Python
+- Python 3.10+
 - FastAPI
-- aiosqlite
-- Pydantic
-- pytest
-- pytest-asyncio
+- SQLAlchemy 2.0 (asynchronous)
+- Pydantic v2
+- PostgreSQL (asyncpg driver)
+- pytest / pytest-asyncio
+- GitHub Actions (CI)
 
 ## Setup
 
@@ -28,8 +29,21 @@ This is a simple CRUD API built with [FastAPI](https://fastapi.tiangolo.com/) an
     python -m venv venv
     source venv/bin/activate  # On Windows: venv\Scripts\activate
     ```
-3.  Install dependencies: `pip install -r requirements.txt`
-4.  Run the server: `uvicorn main:app --reload`
+3.  Install dependencies:
+    ```bash
+    pip install -r requirements.txt
+    ```
+4.  Set up environment variables:
+    Create a `.env` file in the project root with the following content:
+    ```env
+    DATABASE_URL=postgresql+asyncpg://user:password@localhost/main_db
+    TEST_DATABASE_URL=postgresql+asyncpg://user:password@localhost/test_db
+    ```
+    Replace `user`, `password`, `localhost`, and database names with your actual PostgreSQL credentials.
+5.  Run the server:
+    ```bash
+    uvicorn main:app --reload
+    ```
 
 ## API Endpoints
 
@@ -37,10 +51,10 @@ This is a simple CRUD API built with [FastAPI](https://fastapi.tiangolo.com/) an
 - `POST /users/create_user` - Create a new user.
 - `GET /users/get_users` - Get all users.
 - `DELETE /users/delete_user/{user_id}` - Delete a user by ID.
-- `PUT /users/user_update/{user_id}` - Update a user by ID.
+- `PATCH /users/user_update/{user_id}` - Partially update a user by ID.
 
 ## Running Tests
 
-Run the tests using pytest: `pytest`
-
-To run tests with more verbose output: `pytest -v`
+Run the tests using pytest:
+```bash
+pytest

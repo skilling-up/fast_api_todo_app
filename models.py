@@ -1,21 +1,31 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import Optional
-class User_create(BaseModel):
-    """
-    Pydantic model for creating a new user.
+from database import Base
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, Integer
 
-    Defines the schema and validation rules for user data received during creation.
-    """
-    name:str
-    age:int = Field(ge=1,lt=150)
-    email:EmailStr
-class User_update(BaseModel):
-    """
-    Pydantic model for updating an existing user.
 
-    Defines the optional fields that can be modified during an update operation.
-    All fields are optional, allowing partial updates.
+
+
+class User(Base):
     """
-    new_name:Optional[str] = None
-    new_age:Optional[int] = None
-    new_email:Optional[EmailStr] = None
+    SQLAlchemy model representing a user in the system.
+
+    Attributes:
+        id (int): Primary key, auto-incremented.
+        name (str): User's full name. Max length 50, cannot be null.
+        age (int): User's age. cannot be null.
+        email (str): User's email address. Must be unique, indexed for fast lookup, cannot be null. 
+    """
+    __tablename__ = "users"
+
+    id:Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name:Mapped[str]= mapped_column(String(50), nullable=False)
+    age: Mapped[int] = mapped_column(Integer, nullable=False)
+    email:Mapped[str] = mapped_column(String(100),unique= True, index=True, nullable=False)
+
+    def __repr__(self) -> str:
+        """
+        Return a string representation of the User instance.
+        Useful for debugging and logging.
+         """
+        return f"User(id={self.id!r}, name='{self.name!r}', age={self.age!r}, email='{self.email!r}')"
+    
