@@ -43,13 +43,13 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio
       
-      - name: Run tests
-  env:
-    db_user: postgres
-    db_pass: postgres
-    db_host: localhost
-    db_port: 5432
-    db_name: test_db
-    db_name_test: test_db
-  run: |
-    pytest -v
+            - name: Run tests
+        env:
+          db_user: postgres
+          db_pass: postgres
+          db_host: localhost
+          db_port: 5432
+          db_name: test_db
+          db_name_test: test_db
+        run: |
+          pytest -v
