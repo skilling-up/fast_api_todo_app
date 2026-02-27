@@ -1,55 +1,58 @@
-name: Run Tests
+name: CI
 
 on:
   push:
-    branches: [ "new-version" ]
+    branches: [ main, master ]
   pull_request:
-    branches: [ "new-version" ]
+    branches: [ main, master ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
-    
+
     services:
       postgres:
         image: postgres:15
         env:
-          POSTGRES_USER: postgres
-          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_pass
           POSTGRES_DB: test_db
+        ports:
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
-        ports:
-          - 5432:5432
-
-    strategy:
-      matrix:
-        python-version: ["3.10", "3.11"]
 
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Set up Python ${{ matrix.python-version }}
+
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      
+          python-version: '3.10'  # укажите вашу версию
+
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-asyncio
-      
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt  # если есть
+
+      - name: Create test database (if separate from main)
+        run: |
+          # Ждём, пока PostgreSQL полностью запустится
+          sleep 5
+          # Создаём вторую БД, если вам нужно отдельное имя для тестов (db_name_test)
+          PGPASSWORD=test_pass psql -h localhost -U test_user -d test_db -c "CREATE DATABASE test_db_test;"
+        env:
+          PGPASSWORD: test_pass  # для команды psql
+
       - name: Run tests
         env:
-          db_user: postgres
-          db_pass: postgres
-          db_host: localhost
-          db_port: 5432
-          db_name: test_db
-          db_name_test: test_db
-        run: |
-          pytest -v
+          DB_USER: test_user
+          DB_PASS: test_pass
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: test_db
+          DB_NAME_TEST: test_db_test   # имя второй БД, если создали отдельно
+        run: pytest -v
