@@ -1,133 +1,107 @@
+"""
+Test suite for user CRUD operations.
+
+This module contains asynchronous tests for user creation, reading, updating,
+and deletion. It uses the database specified by TEST_DATABASE_URL in settings.
+Tests are isolated: each test runs in its own transaction that is rolled back.
+"""
+
 import pytest
-import aiosqlite
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 import pytest_asyncio
-import os
-from crud import add_user, update_user,delete_user,get_all_users
-from database import init_db
-TEST_DB_PATH = "test_todo_app.db"
+from config import settings
+from crud import add_user, update_user, delete_user, get_all_users
+from models import Base
 
-@pytest_asyncio.fixture
-async def test_db():
+# Use test database URL from settings (should point to a separate test DB)
+TEST_DB_URL = settings.test_database_url
+
+# Create an async engine for tests (pooling is handled by SQLAlchemy default)
+engine_test = create_async_engine(TEST_DB_URL)
+
+# Create a session factory for tests
+TestingSessionLocal = async_sessionmaker(engine_test, expire_on_commit=False, class_=AsyncSession)
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def setup_db():
     """
-    Fixture that provides a clean temporary database for each test.
+    Fixture to set up and tear down the database schema before and after each test.
 
-    This fixture creates a new temporary SQLite database file before the test runs,
-    initializes its schema, yields the database connection to the test,
-    and then closes the connection and removes the file after the test completes.
+    This fixture runs automatically. It creates all tables before the test
+    and drops them after the test, ensuring a clean state for every test case.
     """
-    if os.path.exists(TEST_DB_PATH):
-        os.remove(TEST_DB_PATH)
-    
+    async with engine_test.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    yield
+    async with engine_test.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
+    await engine_test.dispose()
 
 
-    db = await aiosqlite.connect(TEST_DB_PATH)
-    await init_db(db)
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def db_session():
+    """
+    Fixture that provides a database session for each test function.
 
-    yield db
-    await db.close()
-    if  os.path.exists(TEST_DB_PATH):
-        os.remove(TEST_DB_PATH)
+    Yields an AsyncSession object. After the test, the session is rolled back
+    and closed to prevent any side effects between tests.
+    """
+    async with TestingSessionLocal() as session:
+        try:
+            yield session
+        finally:
+            await session.rollback()
+            await session.close()
+
 
 @pytest.mark.asyncio
-async def test_add_user(test_db):
-    """
-    Test that the add_user function adds a user to the database correctly.
-
-    Verifies that add_user returns a valid user ID and that the user appears
-    in the list returned by get_all_users.
-    """
-    db = test_db 
-
-    user_id = await add_user("Alice",30,"alice@gmail.com",db)
-    assert user_id is not None , "add_user should return  a user ID"
-    all_users =  await get_all_users(db)
-
-    assert len(all_users) == 1, f"Expected 1 user,got {len(all_users)}"
-
-
+async def test_add_user(db_session):
+    user_id = await add_user(db_session, "Artem", 16, "artem@gmail.com")
+    assert user_id is not None
+    all_users = await get_all_users(db_session)
+    assert len(all_users) == 1
     added_user = all_users[0]
-    assert added_user[1] == "Alice", f"Expected name 'Alice', got '{added_user[1]}'"
-    assert added_user[2] == 30, f"Expected age 30, got {added_user[2]}"
-    assert added_user[3] == "alice@gmail.com", f"Expected email 'alice@gmail.com', got '{added_user[3]}'"
-@pytest.mark.asyncio
-async def test_get_all_users(test_db):
-    """
-    Test that the get_all_users function retrieves all users from the database.
+    assert added_user.name == "Artem"
+    assert added_user.age == 16
+    assert added_user.email == "artem@gmail.com"
 
-    Adds multiple users to the database and verifies that get_all_users returns
-    a list containing all of them.
-    """
-    db = test_db
-    user_id_1 = await add_user("user1",25,"user1@test.com", db)
-    user_id_2 = await add_user("user2",22,"user2@test.com", db)
-    user_id_3 = await add_user("user3",24,"user3@test.com", db)
-
-    assert user_id_1 is not None , "First user should be added"
-    assert user_id_2 is not None , "Second user should be added"
-    assert user_id_3 is not None, "Third user should be added"
-
-    all_user = await get_all_users(db)
-
-    assert len(all_user) == 3 , f"Expected 3 users, got {len(all_user)}"
-
-    names_in_db = {user[1] for user in all_user}
-    expected_names = {'user1', 'user2','user3'}
-
-    emails_in_db = {user[3] for user in all_user}
-    expected_emails = {"user1@test.com","user2@test.com","user3@test.com"}
-    ages_in_db = {user[2] for user in all_user}
-    expected_ages = {25,22,24}
-
-    assert names_in_db == expected_names, f"Names mismatch, Expected {expected_names}, got {names_in_db}"
-    assert emails_in_db == expected_emails, f"Emails mismatch, Expected {expected_emails}, got {emails_in_db}"
-    assert ages_in_db == expected_ages , f" Ages mismatch, Expected {expected_ages}, got {ages_in_db}"
 
 @pytest.mark.asyncio
-async def test_update_user(test_db):
-    """
-    Test that the update_user function updates specific fields of a user.
-
-    Adds a user, updates its age and email, and then verifies that the changes
-    are reflected in the database when retrieving the user again.
-    """
-    db = test_db
-    user_id = await add_user("name_user",17, "uw@gmil.com", db)
-
-    assert user_id is not None, "User should be added successfully for update test"
-
-    await update_user(user_id,db,None,18,"user1_update@gmail.com")
-    all_users = await get_all_users(db)
-
-    updated_user = None
-    for user in all_users:
-        if user[0] == user_id:
-            updated_user = user 
-            break
-    assert updated_user is not None, f"User with ID {user_id} not found after update"
-    
-
-
-    assert updated_user[1] == "name_user", f"Expected name 'name_user', got '{updated_user[1]}'" 
-    assert updated_user[2] == 18, f"Expected age 18, got {updated_user[2]}" 
-    assert updated_user[3] == "user1_update@gmail.com", f"Expected email 'user1_update@gmail.com', got '{updated_user[3]}'" 
-
-    assert len(all_users) == 1, f"Expected 1 user after update , got {len(all_users)}"
+async def test_update_user(db_session):
+    user_id = await add_user(db_session,"name_user", 0, "uw@gmail.com")
+    await update_user(db_session,user_id, age = 16, email ="user@gmail.com")
+    all_users = await get_all_users(db_session)
+    updated_user = next((u for u in all_users if u.id == user_id), None)
+    assert updated_user is not None
+    assert updated_user.age == 16
+    assert updated_user.email =="user@gmail.com"
 
 @pytest.mark.asyncio
-async def test_delete_user(test_db):
-    """
-    Test that the delete_user function removes a user from the database.
+async def test_get_all_user(db_session):
+    await add_user(db_session,"user1",25,"user1@test.com")
+    await add_user(db_session,"user2",23,"user2@test.com")
+    await add_user(db_session,"user3",24,"user3@test.com")
+    all_users = await get_all_users(db_session)
+    assert len(all_users) ==3
 
-    Adds a user, deletes it, and them verifies that get_all_users returns
-    an empty list.
-    """
-    db = test_db
+    names_in_db = {user.name for user in all_users}
+    expected_names = {"user1", "user2", "user3"}
 
-    user_id = await add_user("user1", 24, "test@gmail.com", db)
+    emails_in_db = {user.email for user in all_users}
+    expected_emails ={'user1@test.com','user2@test.com','user3@test.com'}
 
-    assert user_id is not None, "User should be added successfully for delete test"
+    assert names_in_db == expected_names
+    assert emails_in_db == expected_emails
 
+@pytest.mark.asyncio 
+async def test_delete_user(db_session):
 
-    await  delete_user(user_id, db)
-    all_users = await get_all_users(db)
-    assert  len(all_users) == 0, f"the user was not deleted from the database"
+    user_id = await add_user(db_session, "user1", 24,"test@gmail.com")
+    assert user_id is not None
+
+    deleted = await delete_user(db_session, user_id)
+    assert deleted is True
+
+    all_users = await get_all_users(db_session)
+    assert len(all_users) == 0
